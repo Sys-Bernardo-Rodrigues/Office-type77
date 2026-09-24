@@ -145,7 +145,7 @@ Type77 Pixel Office features a provider-agnostic adapter layer with **100% in-br
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Gitlawb/Office-type77.git
+git clone https://github.com/Sys-Bernardo-Rodrigues/Office-type77.git
 cd Office-type77
 ```
 
