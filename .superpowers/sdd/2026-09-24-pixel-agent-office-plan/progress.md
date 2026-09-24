@@ -13,3 +13,4 @@ Pre-flight status: Clean, all interfaces strongly aligned.
 
 ## Progress
 - Task 1: complete (Scaffolding Next.js 15, Tailwind, TS, Vitest -> 1/1 pass)
+- Task 2: complete (Prisma ORM SQLite schema & client -> 3/3 pass)

@@ -1,0 +1,118 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model ProviderSetting {
+  id            String   @id @default(uuid())
+  providerId    String   @unique
+  name          String
+  apiKey        String?
+  baseUrl       String?
+  defaultModel  String?
+  customHeaders String?
+  isActive      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Agent {
+  id             String          @id @default(uuid())
+  name           String
+  role           String
+  systemPrompt   String
+  provider       String
+  model          String
+  temperature    Float           @default(0.7)
+  avatar         String
+  status         String          @default("idle")
+  deskId         String?
+  posX           Float           @default(0)
+  posY           Float           @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  tasks          Task[]
+  logs           AgentLog[]
+  meetingMembers MeetingMember[]
+}
+
+model OfficeLayout {
+  id        String          @id @default(uuid())
+  name      String          @default("Default Office")
+  width     Int             @default(32)
+  height    Int             @default(24)
+  tiles     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  furniture FurnitureItem[]
+}
+
+model FurnitureItem {
+  id              String       @id @default(uuid())
+  layoutId        String
+  furnitureId     String
+  itemType        String
+  gridX           Int
+  gridY           Int
+  width           Int          @default(1)
+  height          Int          @default(1)
+  rotation        Int          @default(0)
+  assignedAgentId String?
+  interactionType String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  layout          OfficeLayout @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id           String     @id @default(uuid())
+  title        String
+  description  String
+  status       String     @default("backlog")
+  priority     String     @default("medium")
+  assignedToId String?
+  parentId     String?
+  result       String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  assignedTo   Agent?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  parent       Task?      @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subTasks     Task[]     @relation("SubTasks")
+  logs         AgentLog[]
+}
+
+model AgentLog {
+  id        String   @id @default(uuid())
+  agentId   String
+  taskId    String?
+  type      String
+  content   String
+  metadata  String?
+  createdAt DateTime @default(now())
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+}
+
+model Meeting {
+  id        String          @id @default(uuid())
+  title     String
+  topic     String
+  status    String          @default("active")
+  consensus String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  members   MeetingMember[]
+}
+
+model MeetingMember {
+  id        String   @id @default(uuid())
+  meetingId String
+  agentId   String
+  joinedAt  DateTime @default(now())
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
