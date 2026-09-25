@@ -4,6 +4,7 @@ import {
   listSupportedProviders,
   SUPPORTED_PROVIDERS,
 } from '../../src/lib/providers/registry';
+import type { SupportedProviderId } from '../../src/lib/providers/types';
 
 describe('Multi-Provider Hub Registry', () => {
   it('registers all 8 required curated provider engines and excludes ollama/groq', () => {
@@ -33,8 +34,8 @@ describe('Multi-Provider Hub Registry', () => {
   });
 
   it('throws helpful error for unknown provider engines', () => {
-    expect(() => getProviderAdapter('unknown-engine' as any)).toThrow(
-      /Unsupported provider/i
-    );
+    const unknownProvider = 'unknown-engine' as unknown as SupportedProviderId;
+
+    expect(() => getProviderAdapter(unknownProvider)).toThrow(/Unsupported provider/i);
   });
 });
