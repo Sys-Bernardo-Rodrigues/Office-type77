@@ -16,6 +16,10 @@ dist/
 .DS_Store
 *.pem
 
+# Local agent tool settings (per-machine permissions, not project config)
+.openclaude/
+.claude/settings.local.json
+
 # Local env files
 .env*.local
 .env
