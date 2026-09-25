@@ -16,11 +16,25 @@ const createdAgents: Array<{
   showBubble: ReturnType<typeof vi.fn>;
 }> = [];
 
+const createdSprites: Array<{ setOrigin: ReturnType<typeof vi.fn>; setDisplaySize: ReturnType<typeof vi.fn>; setDepth: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }> = [];
+
 vi.mock('phaser', () => {
   class Scene {
     game = { events: { on: vi.fn(), off: vi.fn() } };
     events = { once: vi.fn() };
-    add = {};
+    add = {
+      image: vi.fn(() => {
+        const sprite = {
+          setOrigin: vi.fn().mockReturnThis(),
+          setDisplaySize: vi.fn().mockReturnThis(),
+          setDepth: vi.fn().mockReturnThis(),
+          destroy: vi.fn(),
+        };
+        createdSprites.push(sprite);
+        return sprite;
+      }),
+    };
+    input = { on: vi.fn(), off: vi.fn(), keyboard: { on: vi.fn(), off: vi.fn() } };
 
     constructor(key: string) {
       void key;
@@ -66,6 +80,13 @@ type EventHandlers = {
   handleStateChange(payload: unknown): void;
   handleThought(payload: unknown): void;
   removeEventListeners(): void;
+  handleSetBuilderMode(payload: unknown): void;
+  handleSelectBuilderItem(payload: unknown): void;
+  handleRotateBuilderSelection(): void;
+  handlePlaceBuilderItem(payload: unknown): void;
+  handleRemoveBuilderItem(payload: unknown): void;
+  handleSaveBuilderLayout(payload: unknown): void;
+  handleLoadBuilderLayout(payload: unknown): void;
 };
 
 function handlers(scene: OfficeScene): EventHandlers {
@@ -73,7 +94,10 @@ function handlers(scene: OfficeScene): EventHandlers {
 }
 
 describe('OfficeScene event boundaries', () => {
-  beforeEach(() => createdAgents.splice(0));
+  beforeEach(() => {
+    createdAgents.splice(0);
+    createdSprites.splice(0);
+  });
 
   it('rejects malformed add and movement payloads', () => {
     const scene = new OfficeScene();
@@ -113,5 +137,90 @@ describe('OfficeScene event boundaries', () => {
 
     expect(createdAgents[0].destroy).toHaveBeenCalledOnce();
     expect(createdAgents[0].setAgentState).not.toHaveBeenCalled();
+  });
+});
+
+describe('OfficeScene Tycoon builder wiring', () => {
+  beforeEach(() => createdSprites.splice(0));
+
+  it('ignores builder events until in build mode with a selected item', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.handlePlaceBuilderItem({ x: 3, y: 3 });
+    expect(createdSprites).toHaveLength(0);
+
+    subject.handleSetBuilderMode({ mode: 'build' });
+    subject.handlePlaceBuilderItem({ x: 3, y: 3 });
+    expect(createdSprites).toHaveLength(0);
+  });
+
+  it('places, renders, and removes furniture once an item is selected', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.handleSetBuilderMode({ mode: 'build' });
+    subject.handleSelectBuilderItem({ type: 'chair' });
+    subject.handlePlaceBuilderItem({ x: 3, y: 3 });
+
+    expect(createdSprites).toHaveLength(1);
+    const [id] = scene.getBuilderState().placements.map((p) => p.id);
+    expect(id).toBeDefined();
+
+    subject.handleRemoveBuilderItem({ id: id! });
+    expect(createdSprites[0].destroy).toHaveBeenCalledOnce();
+    expect(scene.getBuilderState().placements).toHaveLength(0);
+  });
+
+  it('rotates the current selection via the R keyboard shortcut event', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.handleSetBuilderMode({ mode: 'build' });
+    subject.handleSelectBuilderItem({ type: 'desk' });
+    subject.handleRotateBuilderSelection();
+
+    expect(scene.getBuilderState().selectedItem?.rotation).toBe(90);
+  });
+
+  it('rejects malformed builder payloads without throwing', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.handleSetBuilderMode({ mode: 'orbit' });
+    subject.handleSelectBuilderItem({ type: 42 });
+    subject.handlePlaceBuilderItem({ x: 'nope', y: 3 });
+    subject.handleRemoveBuilderItem({ id: '' });
+    subject.handleSaveBuilderLayout({ name: '' });
+    subject.handleLoadBuilderLayout({ name: 42 });
+
+    expect(scene.getBuilderState().mode).toBe('view');
+    expect(createdSprites).toHaveLength(0);
+  });
+
+  it('round-trips a saved layout through load, restoring rendered placements', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.handleSetBuilderMode({ mode: 'build' });
+    subject.handleSelectBuilderItem({ type: 'plant' });
+    subject.handlePlaceBuilderItem({ x: 5, y: 5 });
+    subject.handleSaveBuilderLayout({ name: 'my-layout' });
+
+    subject.handleRemoveBuilderItem({ id: scene.getBuilderState().placements[0].id });
+    expect(scene.getBuilderState().placements).toHaveLength(0);
+
+    subject.handleLoadBuilderLayout({ name: 'my-layout' });
+    expect(scene.getBuilderState().placements).toHaveLength(1);
+  });
+
+  it('detaches builder and pointer listeners on shutdown', () => {
+    const scene = new OfficeScene();
+    const subject = handlers(scene);
+
+    subject.removeEventListeners();
+
+    expect(scene.game.events.off).toHaveBeenCalledWith('builder:place', expect.any(Function), scene);
+    expect(scene.input.off).toHaveBeenCalledWith('pointerdown', expect.any(Function), scene);
   });
 });

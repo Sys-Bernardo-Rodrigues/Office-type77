@@ -77,6 +77,26 @@ export function generateOfficeTextures(scene: Phaser.Scene): void {
     g.fillStyle(0xf8fafc).fillRect(9, 8, 14, 9);
     g.fillStyle(0x7c2d12).fillRect(11, 20, 10, 7);
   });
+  texture(scene, 'office-chair', 32, 32, (g) => {
+    g.fillStyle(0x1e293b).fillRect(6, 4, 20, 6);
+    g.fillStyle(0x334155).fillRect(8, 10, 16, 16);
+    g.fillStyle(0x0f172a).fillRect(8, 26, 4, 4).fillRect(20, 26, 4, 4);
+  });
+  texture(scene, 'office-plant', 32, 32, (g) => {
+    g.fillStyle(0x7c2d12).fillRect(10, 22, 12, 8);
+    g.fillStyle(0x15803d).fillRect(8, 6, 16, 18);
+    g.fillStyle(0x16a34a).fillRect(12, 2, 8, 10);
+  });
+  texture(scene, 'office-whiteboard', 64, 32, (g) => {
+    g.fillStyle(0xe2e8f0).fillRect(2, 2, 60, 24);
+    g.fillStyle(0x94a3b8).fillRect(0, 26, 64, 6);
+    g.fillStyle(0x38bdf8).fillRect(8, 8, 20, 3).fillRect(8, 14, 32, 3);
+  });
+  texture(scene, 'office-sofa', 96, 32, (g) => {
+    g.fillStyle(0x312e81).fillRect(0, 10, 96, 22);
+    g.fillStyle(0x4338ca).fillRect(2, 2, 92, 12);
+    g.fillStyle(0x1e1b4b).fillRect(0, 26, 96, 6);
+  });
   for (const state of AGENT_ANIMATIONS) {
     const frameKeys = [0, 1].map((frame) => {
       const key = `office-agent-${state}-${frame}`;

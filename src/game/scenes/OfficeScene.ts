@@ -1,8 +1,12 @@
 /**
- * Importers/Callers: src/game/config.ts, Phaser scene manager, src/components/game/OfficeCanvas.tsx event bridge
- * Affected API: OfficeScene, addAgent(), moveAgent(), updateAgentState(), showAgentBubble()
- * Data Schemas: OfficeAgentEvent payloads with agentId, state/text, and grid coordinates
- * User Instruction: "vamos continuar"
+ * Importers/Callers: src/game/config.ts, Phaser scene manager, src/components/game/OfficeCanvas.tsx event bridge,
+ *   src/components/game/TycoonCatalogModal.tsx (builder:* events)
+ * Affected API: OfficeScene, addAgent(), moveAgent(), updateAgentState(), showAgentBubble(),
+ *   setBuilderMode(), selectBuilderItem(), rotateBuilderSelection(), placeBuilderItem(), removeBuilderItem(),
+ *   getBuilderState(), saveBuilderLayout(), loadBuilderLayout()
+ * Data Schemas: OfficeAgentEvent payloads with agentId, state/text, and grid coordinates;
+ *   builder:* payloads carrying furniture type, grid coordinates, and layout name
+ * User Instruction: "vamos continuar o projeto paramos na task 7 da uma analisada e vamos continuar"
  */
 import Phaser from 'phaser';
 import { generateOfficeTextures } from '../assets/spritesheet-generator';
@@ -10,6 +14,7 @@ import { GRID_SIZE, OFFICE_HEIGHT, OFFICE_WIDTH } from '../constants';
 import { AgentSprite, type AgentAnimationState } from '../entities/AgentSprite';
 import type { BubbleKind } from '../entities/ThoughtBubble';
 import { AStarGrid } from '../grid/AStarPathfinder';
+import { TycoonBuilder, type BuilderMode, type Placement } from '../builder/TycoonBuilder';
 
 export const OFFICE_EVENT = {
   addAgent: 'office:add-agent',
@@ -18,6 +23,24 @@ export const OFFICE_EVENT = {
   thought: 'agent:thought',
   speech: 'agent:speech',
 } as const;
+
+export const BUILDER_EVENT = {
+  setMode: 'builder:set-mode',
+  selectItem: 'builder:select-item',
+  rotate: 'builder:rotate',
+  place: 'builder:place',
+  remove: 'builder:remove',
+  save: 'builder:save',
+  load: 'builder:load',
+} as const;
+
+const FURNITURE_TEXTURE: Record<string, string> = {
+  desk: 'office-desk',
+  chair: 'office-chair',
+  plant: 'office-plant',
+  whiteboard: 'office-whiteboard',
+  sofa: 'office-sofa',
+};
 
 const AGENT_STATES: ReadonlySet<AgentAnimationState> = new Set([
   'idle',
@@ -40,6 +63,10 @@ function isCoordinate(value: unknown): value is number {
   return Number.isInteger(value);
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 function isInteriorCell(x: number, y: number): boolean {
   return x > 0 && x < OFFICE_WIDTH - 1 && y > 0 && y < OFFICE_HEIGHT - 1;
 }
@@ -47,6 +74,8 @@ function isInteriorCell(x: number, y: number): boolean {
 export class OfficeScene extends Phaser.Scene {
   private readonly navigation = new AStarGrid(OFFICE_WIDTH, OFFICE_HEIGHT);
   private readonly agents = new Map<string, AgentSprite>();
+  private readonly builder = new TycoonBuilder(this.navigation);
+  private readonly builderSprites = new Map<string, Phaser.GameObjects.Image>();
 
   constructor() {
     super('OfficeScene');
@@ -62,6 +91,15 @@ export class OfficeScene extends Phaser.Scene {
     this.game.events.on(OFFICE_EVENT.stateChange, this.handleStateChange, this);
     this.game.events.on(OFFICE_EVENT.thought, this.handleThought, this);
     this.game.events.on(OFFICE_EVENT.speech, this.handleSpeech, this);
+    this.game.events.on(BUILDER_EVENT.setMode, this.handleSetBuilderMode, this);
+    this.game.events.on(BUILDER_EVENT.selectItem, this.handleSelectBuilderItem, this);
+    this.game.events.on(BUILDER_EVENT.rotate, this.handleRotateBuilderSelection, this);
+    this.game.events.on(BUILDER_EVENT.place, this.handlePlaceBuilderItem, this);
+    this.game.events.on(BUILDER_EVENT.remove, this.handleRemoveBuilderItem, this);
+    this.game.events.on(BUILDER_EVENT.save, this.handleSaveBuilderLayout, this);
+    this.game.events.on(BUILDER_EVENT.load, this.handleLoadBuilderLayout, this);
+    this.input?.on('pointerdown', this.handlePointerDown, this);
+    this.input?.keyboard?.on('keydown-R', this.rotateBuilderSelection, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.removeEventListeners, this);
   }
 
@@ -90,6 +128,53 @@ export class OfficeScene extends Phaser.Scene {
     this.agents.get(agentId)?.showBubble(text, kind);
   }
 
+  setBuilderMode(mode: BuilderMode): void {
+    this.builder.setMode(mode);
+  }
+
+  selectBuilderItem(type: string): void {
+    this.builder.selectItem(type);
+  }
+
+  rotateBuilderSelection(): void {
+    this.builder.rotateSelection();
+  }
+
+  placeBuilderItem(x: number, y: number): string | null {
+    const id = this.builder.placeItem(x, y);
+    if (!id) return null;
+    const placement = this.builder.getPlacements().find((p) => p.id === id);
+    if (placement) this.renderBuilderPlacement(placement);
+    return id;
+  }
+
+  removeBuilderItem(id: string): boolean {
+    const removed = this.builder.removeItem(id);
+    if (removed) {
+      this.builderSprites.get(id)?.destroy();
+      this.builderSprites.delete(id);
+    }
+    return removed;
+  }
+
+  getBuilderState(): { mode: BuilderMode; selectedItem: ReturnType<TycoonBuilder['getSelectedItem']>; placements: Placement[] } {
+    return {
+      mode: this.builder.getMode(),
+      selectedItem: this.builder.getSelectedItem(),
+      placements: this.builder.getPlacements(),
+    };
+  }
+
+  saveBuilderLayout(name: string): void {
+    this.builder.saveLayout(name);
+  }
+
+  loadBuilderLayout(name: string): boolean {
+    const loaded = this.builder.loadLayout(name);
+    if (loaded) this.redrawBuilderPlacements();
+    return loaded;
+  }
+
   private drawOffice(): void {
     for (let y = 0; y < OFFICE_HEIGHT; y += 1) {
       for (let x = 0; x < OFFICE_WIDTH; x += 1) {
@@ -110,6 +195,69 @@ export class OfficeScene extends Phaser.Scene {
     }
     this.add.image(17 * GRID_SIZE, 2 * GRID_SIZE, 'office-coffee').setOrigin(0).setDepth(3 * GRID_SIZE);
     this.navigation.setWalkable(17, 2, false);
+  }
+
+  private renderBuilderPlacement(placement: Placement): void {
+    const textureKey = FURNITURE_TEXTURE[placement.furniture.type] ?? 'office-desk';
+    const footprintW = placement.furniture.rotation % 180 === 0
+      ? placement.furniture.width
+      : placement.furniture.height;
+    const footprintH = placement.furniture.rotation % 180 === 0
+      ? placement.furniture.height
+      : placement.furniture.width;
+
+    const sprite = this.add.image(placement.x * GRID_SIZE, placement.y * GRID_SIZE, textureKey)
+      .setOrigin(0)
+      .setDisplaySize(footprintW * GRID_SIZE, footprintH * GRID_SIZE)
+      .setDepth(placement.y * GRID_SIZE);
+    this.builderSprites.set(placement.id, sprite);
+  }
+
+  private redrawBuilderPlacements(): void {
+    for (const sprite of this.builderSprites.values()) sprite.destroy();
+    this.builderSprites.clear();
+    for (const placement of this.builder.getPlacements()) this.renderBuilderPlacement(placement);
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.builder.getMode() !== 'build') return;
+    const gridX = Math.floor(pointer.worldX / GRID_SIZE);
+    const gridY = Math.floor(pointer.worldY / GRID_SIZE);
+    this.placeBuilderItem(gridX, gridY);
+  }
+
+  private handleSetBuilderMode(payload: unknown): void {
+    if (!isRecord(payload) || (payload.mode !== 'view' && payload.mode !== 'build')) return;
+    this.setBuilderMode(payload.mode);
+  }
+
+  private handleSelectBuilderItem(payload: unknown): void {
+    if (!isRecord(payload) || !isNonEmptyString(payload.type)) return;
+    this.selectBuilderItem(payload.type);
+  }
+
+  private handleRotateBuilderSelection(): void {
+    this.rotateBuilderSelection();
+  }
+
+  private handlePlaceBuilderItem(payload: unknown): void {
+    if (!isRecord(payload) || !isCoordinate(payload.x) || !isCoordinate(payload.y)) return;
+    this.placeBuilderItem(payload.x, payload.y);
+  }
+
+  private handleRemoveBuilderItem(payload: unknown): void {
+    if (!isRecord(payload) || !isNonEmptyString(payload.id)) return;
+    this.removeBuilderItem(payload.id);
+  }
+
+  private handleSaveBuilderLayout(payload: unknown): void {
+    if (!isRecord(payload) || !isNonEmptyString(payload.name)) return;
+    this.saveBuilderLayout(payload.name);
+  }
+
+  private handleLoadBuilderLayout(payload: unknown): void {
+    if (!isRecord(payload) || !isNonEmptyString(payload.name)) return;
+    this.loadBuilderLayout(payload.name);
   }
 
   private handleAddAgent(payload: unknown): void {
@@ -151,7 +299,18 @@ export class OfficeScene extends Phaser.Scene {
     this.game.events.off(OFFICE_EVENT.stateChange, this.handleStateChange, this);
     this.game.events.off(OFFICE_EVENT.thought, this.handleThought, this);
     this.game.events.off(OFFICE_EVENT.speech, this.handleSpeech, this);
+    this.game.events.off(BUILDER_EVENT.setMode, this.handleSetBuilderMode, this);
+    this.game.events.off(BUILDER_EVENT.selectItem, this.handleSelectBuilderItem, this);
+    this.game.events.off(BUILDER_EVENT.rotate, this.handleRotateBuilderSelection, this);
+    this.game.events.off(BUILDER_EVENT.place, this.handlePlaceBuilderItem, this);
+    this.game.events.off(BUILDER_EVENT.remove, this.handleRemoveBuilderItem, this);
+    this.game.events.off(BUILDER_EVENT.save, this.handleSaveBuilderLayout, this);
+    this.game.events.off(BUILDER_EVENT.load, this.handleLoadBuilderLayout, this);
+    this.input?.off('pointerdown', this.handlePointerDown, this);
+    this.input?.keyboard?.off('keydown-R', this.rotateBuilderSelection, this);
     for (const agent of this.agents.values()) agent.destroy();
     this.agents.clear();
+    for (const sprite of this.builderSprites.values()) sprite.destroy();
+    this.builderSprites.clear();
   }
 }
