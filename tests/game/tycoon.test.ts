@@ -131,6 +131,21 @@ describe('Office Tycoon Builder', () => {
       expect(builder.getPlacements()).toHaveLength(0);
     });
 
+    it('allows placing at a cell again after the item that occupied it is removed', () => {
+      builder.setMode('build');
+      builder.selectItem('chair');
+      const id = builder.placeItem(3, 3);
+      expect(id).not.toBeNull();
+      builder.removeItem(id!);
+
+      builder.selectItem('plant');
+      const secondId = builder.placeItem(3, 3);
+
+      expect(secondId).not.toBeNull();
+      expect(builder.getPlacements()).toHaveLength(1);
+      expect(builder.getPlacements()[0].furniture.type).toBe('plant');
+    });
+
     it('saves and loads layouts', () => {
       builder.setMode('build');
       builder.selectItem('chair');

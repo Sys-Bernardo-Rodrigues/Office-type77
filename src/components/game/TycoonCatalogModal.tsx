@@ -26,6 +26,7 @@ export interface TycoonCatalogModalProps {
   catalog?: FurnitureItem[];
   selectedType: string | null;
   selectedRotation?: number;
+  statusMessage?: string | null;
   onSelectItem: (type: string) => void;
   onRotate: () => void;
   onSave: (name: string) => void;
@@ -38,6 +39,7 @@ export default function TycoonCatalogModal({
   catalog = FURNITURE_CATALOG,
   selectedType,
   selectedRotation = 0,
+  statusMessage = null,
   onSelectItem,
   onRotate,
   onSave,
@@ -120,6 +122,7 @@ export default function TycoonCatalogModal({
             Carregar
           </button>
         </div>
+        {statusMessage ? <p className="text-xs text-slate-400">{statusMessage}</p> : null}
       </div>
     </div>
   );

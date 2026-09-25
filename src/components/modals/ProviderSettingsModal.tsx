@@ -25,12 +25,15 @@ interface TestState {
   success?: boolean;
 }
 
-function draftFrom(provider: ProviderSummary): DraftState {
+export function draftFrom(provider: ProviderSummary): DraftState {
   return {
     apiKey: '',
     baseUrl: provider.baseUrl,
     model: provider.model,
-    isActive: provider.isActive,
+    // A provider with no saved ProviderSetting row (apiKey: null) has never been configured,
+    // so it defaults to active — otherwise the route's own create default (isActive: true) is
+    // silently overridden by the draft's false and the provider can never run a task.
+    isActive: provider.apiKey ? provider.isActive : true,
   };
 }
 
@@ -41,6 +44,8 @@ export default function ProviderSettingsModal() {
   const fetchProviders = useOfficeStore((state) => state.fetchProviders);
   const saveProviderSetting = useOfficeStore((state) => state.saveProviderSetting);
   const testProviderConnection = useOfficeStore((state) => state.testProviderConnection);
+  const error = useOfficeStore((state) => state.error);
+  const clearError = useOfficeStore((state) => state.clearError);
 
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
   const [tests, setTests] = useState<Record<string, TestState>>({});
@@ -70,6 +75,7 @@ export default function ProviderSettingsModal() {
     const draft = drafts[providerId];
     if (!draft) return;
     setSaving(providerId);
+    clearError();
     try {
       await saveProviderSetting({
         providerId,
@@ -78,15 +84,23 @@ export default function ProviderSettingsModal() {
         defaultModel: draft.model,
         isActive: draft.isActive,
       });
+      updateDraft(providerId, { apiKey: '' });
+    } catch {
+      // error already recorded in useOfficeStore.error and rendered below
     } finally {
       setSaving(null);
     }
   }
 
   async function handleTest(providerId: string) {
+    const draft = drafts[providerId];
     setTests((current) => ({ ...current, [providerId]: { pending: true } }));
     try {
-      const result = await testProviderConnection(providerId);
+      const result = await testProviderConnection(providerId, {
+        apiKey: draft?.apiKey || undefined,
+        baseUrl: draft?.baseUrl,
+        defaultModel: draft?.model,
+      });
       setTests((current) => ({
         ...current,
         [providerId]: { pending: false, success: result.success, message: result.message },
@@ -113,6 +127,8 @@ export default function ProviderSettingsModal() {
             <X size={18} />
           </button>
         </div>
+
+        {error ? <p className="mb-3 text-xs text-red-400">{error}</p> : null}
 
         <ul className="flex flex-col gap-3">
           {providers.map((provider) => {

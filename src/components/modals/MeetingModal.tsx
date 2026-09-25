@@ -51,6 +51,8 @@ export default function MeetingModal() {
       setTitle('');
       setTopic('');
       setParticipantIds([]);
+    } catch {
+      // error already recorded in useOfficeStore.error and rendered below
     } finally {
       setSubmitting(false);
     }

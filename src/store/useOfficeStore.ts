@@ -68,6 +68,13 @@ export interface FetchLogsParams {
   limit?: number;
 }
 
+export interface ProviderTestOverrides {
+  apiKey?: string;
+  baseUrl?: string;
+  defaultModel?: string;
+  customHeaders?: Record<string, string>;
+}
+
 interface OfficeStoreState {
   isBuilderMode: boolean;
   builderSelectedType: string | null;
@@ -109,7 +116,7 @@ interface OfficeStoreState {
   providersLoading: boolean;
   fetchProviders: () => Promise<void>;
   saveProviderSetting: (input: ProviderSettingInput) => Promise<void>;
-  testProviderConnection: (providerId: string) => Promise<ProviderConnectionResult>;
+  testProviderConnection: (providerId: string, overrides?: ProviderTestOverrides) => Promise<ProviderConnectionResult>;
 
   logs: AgentLogEntry[];
   logsLoading: boolean;
@@ -160,7 +167,7 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
   selectedAgentId: null,
   setSelectedAgentId: (id) => set({ selectedAgentId: id }),
   fetchAgents: async () => {
-    set({ agentsLoading: true, error: null });
+    set({ agentsLoading: true });
     try {
       const data = await parseJsonOrThrow<{ agents: Agent[] }>(await fetch('/api/agents'));
       set({ agents: data.agents ?? [], agentsLoading: false });
@@ -169,21 +176,26 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
     }
   },
   hireAgent: async (input) => {
-    const data = await parseJsonOrThrow<{ agent: Agent }>(
-      await fetch('/api/agents', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      }),
-    );
-    set((state) => ({ agents: [...state.agents, data.agent] }));
-    return data.agent;
+    try {
+      const data = await parseJsonOrThrow<{ agent: Agent }>(
+        await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+      set((state) => ({ agents: [...state.agents, data.agent] }));
+      return data.agent;
+    } catch (error) {
+      set({ error: toErrorMessage(error) });
+      throw error;
+    }
   },
 
   tasks: [],
   tasksLoading: false,
   fetchTasks: async () => {
-    set({ tasksLoading: true, error: null });
+    set({ tasksLoading: true });
     try {
       const data = await parseJsonOrThrow<{ tasks: TaskWithRelations[] }>(await fetch('/api/tasks'));
       set({ tasks: data.tasks ?? [], tasksLoading: false });
@@ -192,15 +204,20 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
     }
   },
   createTask: async (input) => {
-    const data = await parseJsonOrThrow<{ task: TaskWithRelations }>(
-      await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      }),
-    );
-    await get().fetchTasks();
-    return data.task;
+    try {
+      const data = await parseJsonOrThrow<{ task: TaskWithRelations }>(
+        await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+      await get().fetchTasks();
+      return data.task;
+    } catch (error) {
+      set({ error: toErrorMessage(error) });
+      throw error;
+    }
   },
   runTask: async (taskId, workspacePath) => {
     try {
@@ -222,7 +239,7 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
   meetings: [],
   meetingsLoading: false,
   fetchMeetings: async () => {
-    set({ meetingsLoading: true, error: null });
+    set({ meetingsLoading: true });
     try {
       const data = await parseJsonOrThrow<{ meetings: MeetingWithMembers[] }>(await fetch('/api/meetings'));
       set({ meetings: data.meetings ?? [], meetingsLoading: false });
@@ -231,21 +248,26 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
     }
   },
   createMeeting: async (input) => {
-    const data = await parseJsonOrThrow<{ meeting: MeetingWithMembers }>(
-      await fetch('/api/meetings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      }),
-    );
-    await get().fetchMeetings();
-    return data.meeting;
+    try {
+      const data = await parseJsonOrThrow<{ meeting: MeetingWithMembers }>(
+        await fetch('/api/meetings', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+      await get().fetchMeetings();
+      return data.meeting;
+    } catch (error) {
+      set({ error: toErrorMessage(error) });
+      throw error;
+    }
   },
 
   providers: [],
   providersLoading: false,
   fetchProviders: async () => {
-    set({ providersLoading: true, error: null });
+    set({ providersLoading: true });
     try {
       const data = await parseJsonOrThrow<{ providers: ProviderSummary[] }>(await fetch('/api/providers'));
       set({ providers: data.providers ?? [], providersLoading: false });
@@ -254,21 +276,26 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
     }
   },
   saveProviderSetting: async (input) => {
-    await parseJsonOrThrow(
-      await fetch('/api/providers', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      }),
-    );
-    await get().fetchProviders();
+    try {
+      await parseJsonOrThrow(
+        await fetch('/api/providers', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+      await get().fetchProviders();
+    } catch (error) {
+      set({ error: toErrorMessage(error) });
+      throw error;
+    }
   },
-  testProviderConnection: async (providerId) => {
+  testProviderConnection: async (providerId, overrides) => {
     return parseJsonOrThrow<ProviderConnectionResult>(
       await fetch('/api/providers/test', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ providerId }),
+        body: JSON.stringify({ providerId, ...overrides }),
       }),
     );
   },
@@ -276,7 +303,7 @@ export const useOfficeStore = create<OfficeStoreState>((set, get) => ({
   logs: [],
   logsLoading: false,
   fetchLogs: async (params) => {
-    set({ logsLoading: true, error: null });
+    set({ logsLoading: true });
     try {
       const query = new URLSearchParams();
       if (params?.agentId) query.set('agentId', params.agentId);

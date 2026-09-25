@@ -9,7 +9,7 @@
  */
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import OfficeCanvas from '../components/game/OfficeCanvas';
 import TycoonCatalogModal from '../components/game/TycoonCatalogModal';
 import HeaderNav from '../components/layout/HeaderNav';
@@ -20,20 +20,12 @@ import KanbanBoard from '../components/kanban/KanbanBoard';
 import AgentLogDrawer from '../components/logs/AgentLogDrawer';
 import { BUILDER_EVENT } from '../game/events';
 import { useOfficeStore } from '../store/useOfficeStore';
+import { applyFurnitureToScene, placementsToFurniture, type FurniturePayload } from '../game/builder/layoutSync';
 import type { OfficeScene } from '../game/scenes/OfficeScene';
-
-interface FurniturePayload {
-  furnitureId: string;
-  itemType: string;
-  gridX: number;
-  gridY: number;
-  width?: number;
-  height?: number;
-  rotation?: number;
-}
 
 export default function Home() {
   const gameRef = useRef<import('phaser').Game | null>(null);
+  const [layoutStatus, setLayoutStatus] = useState<string | null>(null);
 
   const isBuilderMode = useOfficeStore((state) => state.isBuilderMode);
   const setBuilderMode = useOfficeStore((state) => state.setBuilderMode);
@@ -44,14 +36,42 @@ export default function Home() {
   const isCatalogModalOpen = useOfficeStore((state) => state.isCatalogModalOpen);
   const setCatalogModalOpen = useOfficeStore((state) => state.setCatalogModalOpen);
 
-  const handleGameReady = useCallback((game: import('phaser').Game) => {
-    gameRef.current = game;
-  }, []);
-
   const getScene = useCallback((): OfficeScene | null => {
     const game = gameRef.current;
     if (!game) return null;
     return (game.scene.getScene('OfficeScene') as unknown as OfficeScene) ?? null;
+  }, []);
+
+  const handleLoad = useCallback(
+    async (name: string) => {
+      const scene = getScene();
+      if (!scene) return;
+
+      const response = await fetch(`/api/office/layout?name=${encodeURIComponent(name)}`);
+      if (!response.ok) {
+        setLayoutStatus(`Falha ao carregar o layout "${name}".`);
+        return;
+      }
+      const data = await response.json();
+      const furniture: FurniturePayload[] = data.layout?.furniture ?? [];
+
+      const { placed, skipped } = applyFurnitureToScene(scene, furniture);
+      setBuilderSelectedItem(null);
+
+      if (furniture.length === 0) setLayoutStatus(`Layout "${name}" não encontrado ou vazio.`);
+      else if (skipped > 0) setLayoutStatus(`Carregado: ${placed} peça(s), ${skipped} ignorada(s) por colisão.`);
+      else setLayoutStatus(`Layout "${name}" carregado (${placed} peça(s)).`);
+    },
+    [getScene, setBuilderSelectedItem],
+  );
+
+  // Deferred: auto-loading the default layout on mount needs a reliable hook into Phaser's
+  // scene boot lifecycle (game.scene.getScene('OfficeScene') returns undefined immediately
+  // after `new Phaser.Game()` — the scene isn't registered in the SceneManager until later in
+  // its async boot sequence). See progress.md ledger, "Task 8 — final review fix pass" for the
+  // investigation and the ruling to defer this to Task 9 rather than ship an unverified fix.
+  const handleGameReady = useCallback((game: import('phaser').Game) => {
+    gameRef.current = game;
   }, []);
 
   useEffect(() => {
@@ -77,40 +97,17 @@ export default function Home() {
     const scene = getScene();
     if (!scene) return;
     const { placements } = scene.getBuilderState();
-    const furniture: FurniturePayload[] = placements.map((placement) => ({
-      furnitureId: placement.id,
-      itemType: placement.furniture.type,
-      gridX: placement.x,
-      gridY: placement.y,
-      width: placement.furniture.width,
-      height: placement.furniture.height,
-      rotation: placement.furniture.rotation,
-    }));
+    const furniture = placementsToFurniture(placements);
 
-    await fetch('/api/office/layout', {
+    const response = await fetch('/api/office/layout', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name, furniture }),
     });
-  }
 
-  async function handleLoad(name: string) {
-    const scene = getScene();
-    if (!scene) return;
-
-    const response = await fetch(`/api/office/layout?name=${encodeURIComponent(name)}`);
-    const data = await response.json();
-    const furniture: FurniturePayload[] = data.layout?.furniture ?? [];
-
-    scene.setBuilderMode('build');
-    for (const item of furniture) {
-      scene.selectBuilderItem(item.itemType);
-      const targetRotation = ((item.rotation ?? 0) % 360 + 360) % 360;
-      for (let guard = 0; guard < 4 && (scene.getBuilderState().selectedItem?.rotation ?? 0) !== targetRotation; guard += 1) {
-        scene.rotateBuilderSelection();
-      }
-      scene.placeBuilderItem(item.gridX, item.gridY);
-    }
+    setLayoutStatus(
+      response.ok ? `Layout "${name}" salvo (${furniture.length} peça(s)).` : `Falha ao salvar o layout "${name}".`,
+    );
   }
 
   return (
@@ -128,6 +125,7 @@ export default function Home() {
         isOpen={isCatalogModalOpen}
         selectedType={builderSelectedType}
         selectedRotation={builderRotation}
+        statusMessage={layoutStatus}
         onSelectItem={handleSelectItem}
         onRotate={handleRotate}
         onSave={handleSave}

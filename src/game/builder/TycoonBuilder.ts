@@ -31,6 +31,13 @@ export class TycoonBuilder {
 
   private readonly layoutsByName: Map<string, LayoutSnapshot> = new Map();
 
+  // Snapshotted lazily, on first use, rather than in the constructor: TycoonBuilder is
+  // constructed as an OfficeScene field initializer, which runs before OfficeScene.create()
+  // ever marks walls/desks unwalkable on the shared AStarGrid. By the time any builder method
+  // actually gets called (only reachable through builder:* event listeners registered at the
+  // end of create()), the grid's static walkability is already settled.
+  private staticWalkability: boolean[][] | null = null;
+
   constructor(grid: AStarGrid) {
     this.grid = grid;
   }
@@ -70,8 +77,10 @@ export class TycoonBuilder {
   }
 
   private getGridState(): boolean[][] {
-    const base = this.grid.getGrid();
-    const occupied = base.map(row => row.slice());
+    if (!this.staticWalkability) {
+      this.staticWalkability = this.grid.getGrid();
+    }
+    const occupied = this.staticWalkability.map(row => row.slice());
 
     for (const placement of this.placementsById.values()) {
       const w =

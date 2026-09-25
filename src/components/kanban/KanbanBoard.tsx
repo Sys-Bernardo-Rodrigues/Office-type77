@@ -30,7 +30,10 @@ function TaskCard({ task }: { task: TaskWithRelations }) {
   const [running, setRunning] = useState(false);
 
   async function handleRun() {
-    const workspacePath = window.prompt('Caminho do workspace para execução:', '.');
+    // No default value: a blank field (or "." resolving to the server's own working
+    // directory) would let the agent's filesystem/terminal tools run inside this app's
+    // own source tree. The user must type an explicit workspace path.
+    const workspacePath = window.prompt('Caminho do workspace para execução (ex: ./workspaces/meu-projeto):', '');
     if (!workspacePath) return;
     setRunning(true);
     try {
@@ -72,6 +75,8 @@ function TaskCard({ task }: { task: TaskWithRelations }) {
 function QuickAddForm() {
   const agents = useOfficeStore((state) => state.agents);
   const createTask = useOfficeStore((state) => state.createTask);
+  const error = useOfficeStore((state) => state.error);
+  const clearError = useOfficeStore((state) => state.clearError);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
@@ -82,6 +87,7 @@ function QuickAddForm() {
     event.preventDefault();
     if (!title.trim() || !description.trim()) return;
     setSubmitting(true);
+    clearError();
     try {
       await createTask({
         title,
@@ -91,6 +97,8 @@ function QuickAddForm() {
       });
       setTitle('');
       setDescription('');
+    } catch {
+      // error already recorded in useOfficeStore.error and rendered below
     } finally {
       setSubmitting(false);
     }
@@ -98,6 +106,7 @@ function QuickAddForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mb-3 flex flex-wrap items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2">
+      {error ? <p className="w-full text-xs text-red-400">{error}</p> : null}
       <input
         type="text"
         value={title}

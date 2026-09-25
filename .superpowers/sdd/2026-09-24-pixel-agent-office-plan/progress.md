@@ -62,4 +62,118 @@ Pre-flight status: Clean, all interfaces strongly aligned.
   `useOfficeStore` (Zustand) wiring OfficeCanvas <-> TycoonCatalogModal <->
   the office/agents/tasks/meetings API routes.
 - Task 9: end-to-end integration, sound FX, production build validation.
-Task 8: complete (commits e46c030..e46c030, tests: npx vitest run tests/ui/store.test.ts →    Duration  151ms (transform 17ms, setup 0ms, collect 19ms, tests 1ms, environment 0ms, prepare 32ms))
+## Task 8
+- Task 8: Ruling: added `src/app/api/logs/route.ts` (+ `tests/runtime/logs-route.test.ts`) —
+  no existing route exposed AgentLog rows, and AgentLogDrawer's "live log terminal" needs one.
+  Cost if wrong: an unused route, easy to delete.
+- Task 8: Ruling: extracted `OFFICE_EVENT`/`BUILDER_EVENT` out of `OfficeScene.ts` into a new
+  `src/game/events.ts` (re-exported from OfficeScene.ts for compatibility) so `page.tsx` can
+  emit builder events without importing the phaser-dependent OfficeScene module at build time
+  (breaks SSR otherwise). Cost if wrong: one file to merge back.
+- Task 8: Ruling: added `onReady` callback prop to `OfficeCanvas.tsx` so the HUD can obtain the
+  live `Phaser.Game` instance (needed to wire TycoonCatalogModal and office/layout persistence).
+  Cost if wrong: prop is additive/optional, trivially revertable.
+- Task 8: Ruling: changed `TycoonCatalogModal.tsx`'s wrapper from a full-viewport blocking
+  backdrop (`fixed inset-0 bg-black/60`) to a docked non-blocking side panel. Found via the
+  in-browser testing this task's own instructions required: the original backdrop intercepted
+  every pointer event across the whole page, including over the Phaser canvas, making it
+  impossible to click a grid cell to place furniture while the catalog was open. Cost if wrong:
+  a CSS-only revert.
+- Task 8: complete (commits e46c030..c36a630, tests: npx vitest run tests/ui/store.test.ts →
+  1/1 pass; full suite: npx vitest run → 108/108 pass; npx tsc --noEmit clean; npm run build
+  green; manually verified in-browser: hire agent, create/run-ready task, meeting modal, builder
+  mode + furniture placement + save/load round-trip via GET/POST /api/office/layout, provider
+  connection test).
+
+## Task 8 — final review fix pass
+Fresh-context reviewer (Opus, general-purpose subagent) reviewed e46c030..c36a630. No Critical
+findings; 8 Important, 8 Minor. Fixed the following, each with a failing test first:
+- Final: fixed mutation actions (hireAgent, createTask, createMeeting, saveProviderSetting)
+  swallowing failures instead of recording them in store.error, and background fetch* actions
+  wiping error:null on every poll (masking a just-set error within ~4s of AgentLogDrawer
+  polling) — tests/ui/store-error-handling.test.ts RED→GREEN, suite 115/115.
+- Final: fixed "Testar conexão" always testing the DB-saved provider settings instead of the
+  apiKey/baseUrl/model the user had just typed but not yet saved — extracted
+  `resolveProviderTestConfig` to src/lib/providers/resolveTestConfig.ts (had to live outside
+  route.ts: a Next.js route module may only export HTTP handlers, tsc failed otherwise),
+  threaded overrides through useOfficeStore.testProviderConnection and
+  ProviderSettingsModal.handleTest — tests/providers/test-config.test.ts RED→GREEN, suite
+  115/115.
+- Final: fixed a provider that had never been saved defaulting its "Ativo" checkbox to false,
+  so clicking Salvar persisted isActive:false and overrode the API route's own create default
+  of true — the provider could never run a task even right after the user added a key.
+  draftFrom now defaults isActive:true when provider.apiKey is null (never saved) —
+  tests/ui/provider-settings-draft.test.ts RED→GREEN, suite 117/117.
+- Final: fixed page.tsx's Tycoon "Carregar" merging loaded furniture onto whatever was already
+  placed (silently dropping colliding pieces) instead of replacing it, and leaving the
+  selected-item/rotation state out of step with the scene afterward. Extracted the scene
+  mutation into a scene-agnostic src/game/builder/layoutSync.ts
+  (placementsToFurniture/applyFurnitureToScene, unit tested against a fake scene) —
+  tests/game/layout-sync.test.ts RED→GREEN, suite 121/121.
+- Final: fixed "Salvar"/"Carregar" giving no success/failure feedback (same layoutSync.ts
+  change; page.tsx now checks response.ok and shows a status line in the catalog panel).
+- Final: fixed a pre-existing Task 7 bug in `TycoonBuilder.getGridState()`, found while
+  browser-verifying the layoutSync.ts replace-not-merge fix above: after replacing a layout
+  twice in the same session, the second load reported "0 placed, 1 skipped" and the piece
+  vanished entirely. Root cause: `getGridState()` rebuilt its "occupied" base grid from
+  `this.grid.getGrid()` — the shared AStarGrid's *current*, already-mutated walkability — rather
+  than a pristine static snapshot, so `recomputeWalkability()` could only ever shrink the
+  walkable set (mark more cells blocked for new placements) and never restore a cell to
+  walkable once *any* furniture had ever occupied it, even after that furniture was removed.
+  Fixed by lazily snapshotting `this.grid.getGrid()` once, on first use of getGridState()
+  (safe: builder methods are only reachable via builder:* event listeners registered at the end
+  of OfficeScene.create(), after drawOffice() has already marked walls/desks unwalkable) —
+  tests/game/tycoon.test.ts RED→GREEN (new case: "allows placing at a cell again after the item
+  that occupied it is removed"), suite 120/120. This was pre-existing, latent, and unexercised
+  by Task 7's own tests (which only check getPlacements().length after removeItem, never
+  re-place at the same cell); it directly blocked issue #4's replace-not-merge fix from working
+  correctly, so I fixed it in-scope rather than deferring it. Re-verified in-browser afterward:
+  clicking Carregar twice in the same session now correctly reloads the same single chair both
+  times (previously the second click made it vanish).
+- Final: Ruling: attempted, then reverted, an auto-load of the saved layout on page mount
+  (review finding #6 — the saved office layout never reloads after a refresh). First attempt
+  had handleGameReady attach `scene.events.once('create', ...)` right after `new Phaser.Game()`;
+  verified in-browser via Chrome network-request tracking that GET /api/office/layout never
+  fired. Root cause: `game.scene.getScene('OfficeScene')` returns undefined immediately after
+  construction — Phaser's SceneManager doesn't register the scene until later in its async boot
+  sequence (Game.boot() itself waits for DOMContentLoaded before even starting), so the `?.`
+  optional-chain silently no-ops. A reliable fix needs a real hook into that boot sequence
+  (Phaser.Core.Events.READY at the game level, then a scene-existence check, with a fallback for
+  the case where create() already ran by the time the listener attaches) — verified the pieces
+  exist in node_modules/phaser/dist/phaser.js but ran out of fix-pass budget to build and verify
+  a reliable version. Reverted handleGameReady to just storing the game ref (its pre-review-fix
+  behavior); "Carregar" still works fully (manually verified in-browser: save persists, reload
+  page, click Modo Construção → Carregar → furniture reappears correctly, replacing rather than
+  merging per the layoutSync.ts fix above). Cost if wrong: the saved office is invisible until
+  the user manually opens the builder and clicks Carregar — a real but scoped gap, not a
+  regression (this was already the pre-review-fix behavior for the whole session up to now).
+  Deferred to Task 9 alongside the agent-spawn ruling below.
+- Final: fixed KanbanBoard's "Executar" button defaulting the workspacePath prompt to '.',
+  which resolves to the server's own working directory (this app's source tree) — an agent's
+  filesystem/terminal tools would then run inside the orchestrator itself. Default changed to
+  an empty string, which the existing `if (!workspacePath) return;` guard already treats as
+  cancelled.
+- Final: Ruling: hired agents never appear in the Phaser office (no code sends
+  OFFICE_EVENT.addAgent for fetched/hired agents; only the hard-coded demo-agent renders) —
+  reviewer graded this Important (spec §6/§1 name it as the product's core promise) but it
+  requires desk-assignment/spawn-position logic beyond this task's "HUD assembly" scope, and
+  the reviewer itself offered deferral to Task 9 as an acceptable alternative. Task 9's own
+  brief is "End-to-End Integration, Sound FX & Production Build Validation" — a better-scoped
+  home for wiring live agent state onto the canvas than a further HUD-task patch. Cost if
+  wrong: Task 9 needs to budget for this; the gap is visible (only the demo agent renders) so
+  it won't be silently missed.
+- Deferred minors (not fixed, no ruling needed — see reviewer's Minor section for detail):
+  rotation-display drift when 'R' is pressed directly on the canvas; typed API key not cleared
+  from the field after save (now fixed as a 2-line addition alongside the isActive fix, folded
+  into that commit); customHeaders returned unmasked from GET /api/providers (pre-existing,
+  outside this diff); runTask's finally-block re-fetch racing the log drawer's own poll; the
+  docked catalog panel covering part of the canvas at narrow widths; store.test.ts's shallow
+  coverage matching the plan's own minimal Step 1 test exactly.
+- Final: full suite after all fixes (including the TycoonBuilder walkability fix above): npx
+  vitest run → 120/120 pass (24 files); npx tsc --noEmit clean; npm run build green (Next
+  regenerated .next/types/.../providers/test/route.ts cleanly after resolveProviderTestConfig
+  moved out of the route file). Manually re-verified in-browser: hire agent (with the
+  isActive:true-by-default provider now runnable), create task, "Testar conexão" now exercises
+  the real network path with draft overrides (confirmed via a genuine HTTP 404 from the live
+  endpoint), builder mode + place furniture + Salvar/Carregar shows a status line and correctly
+  replaces (not merges) on repeated loads.

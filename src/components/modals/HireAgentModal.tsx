@@ -59,6 +59,8 @@ export default function HireAgentModal() {
       await hireAgent({ name, role, systemPrompt, provider, model, avatar, temperature });
       resetForm();
       close(false);
+    } catch {
+      // error already recorded in useOfficeStore.error and rendered below
     } finally {
       setSubmitting(false);
     }
