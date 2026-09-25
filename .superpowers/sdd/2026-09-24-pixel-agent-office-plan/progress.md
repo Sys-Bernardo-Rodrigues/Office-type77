@@ -62,3 +62,4 @@ Pre-flight status: Clean, all interfaces strongly aligned.
   `useOfficeStore` (Zustand) wiring OfficeCanvas <-> TycoonCatalogModal <->
   the office/agents/tasks/meetings API routes.
 - Task 9: end-to-end integration, sound FX, production build validation.
+Task 8: complete (commits e46c030..e46c030, tests: npx vitest run tests/ui/store.test.ts →    Duration  151ms (transform 17ms, setup 0ms, collect 19ms, tests 1ms, environment 0ms, prepare 32ms))

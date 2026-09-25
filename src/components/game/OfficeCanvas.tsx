@@ -1,14 +1,20 @@
 /**
- * Importers/Callers: src/app/page.tsx and future office dashboard layouts
- * Affected API: OfficeCanvas React component
+ * Importers/Callers: src/app/page.tsx (React HUD)
+ * Affected API: OfficeCanvas React component, onReady(game) prop
  * Data Schemas: Phaser.Game instance mounted into a div ref
- * User Instruction: "vamos continuar"
+ * User Instruction: Task 8 ruling — added onReady so the HUD can emit BUILDER_EVENT/OFFICE_EVENT
+ *   onto the live Phaser.Game instance (e.g. to wire TycoonCatalogModal), without page.tsx ever
+ *   importing the 'phaser' module itself.
  */
 'use client';
 
 import { useEffect, useRef } from 'react';
 
-export default function OfficeCanvas() {
+export interface OfficeCanvasProps {
+  onReady?: (game: import('phaser').Game) => void;
+}
+
+export default function OfficeCanvas({ onReady }: OfficeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,13 +22,17 @@ export default function OfficeCanvas() {
     let disposed = false;
 
     void Promise.all([import('phaser'), import('../../game/config')]).then(([{ default: Phaser }, { createGameConfig }]) => {
-      if (!disposed && containerRef.current) game = new Phaser.Game(createGameConfig(containerRef.current));
+      if (!disposed && containerRef.current) {
+        game = new Phaser.Game(createGameConfig(containerRef.current));
+        onReady?.(game);
+      }
     });
 
     return () => {
       disposed = true;
       game?.destroy(true);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

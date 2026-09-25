@@ -15,24 +15,9 @@ import { AgentSprite, type AgentAnimationState } from '../entities/AgentSprite';
 import type { BubbleKind } from '../entities/ThoughtBubble';
 import { AStarGrid } from '../grid/AStarPathfinder';
 import { TycoonBuilder, type BuilderMode, type Placement } from '../builder/TycoonBuilder';
+import { OFFICE_EVENT, BUILDER_EVENT } from '../events';
 
-export const OFFICE_EVENT = {
-  addAgent: 'office:add-agent',
-  moveAgent: 'office:move-agent',
-  stateChange: 'agent:state_change',
-  thought: 'agent:thought',
-  speech: 'agent:speech',
-} as const;
-
-export const BUILDER_EVENT = {
-  setMode: 'builder:set-mode',
-  selectItem: 'builder:select-item',
-  rotate: 'builder:rotate',
-  place: 'builder:place',
-  remove: 'builder:remove',
-  save: 'builder:save',
-  load: 'builder:load',
-} as const;
+export { OFFICE_EVENT, BUILDER_EVENT };
 
 const FURNITURE_TEXTURE: Record<string, string> = {
   desk: 'office-desk',
