@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "type77-provider-hub": {
+      "command": "npx",
+      "args": ["tsx", "src/lib/mcp/stdio-server.ts"]
+    }
+  }
+}

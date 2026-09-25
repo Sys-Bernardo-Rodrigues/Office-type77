@@ -12,7 +12,7 @@
 
 **Uma plataforma gamificada de orquestração multiagente de IA que combina escritórios virtuais interativos em Pixel Art 2D com execução autônoma ReAct, delegação hierárquica de tarefas e um Hub Multi-Provider de LLMs configurável 100% pelo frontend.**
 
-[Recursos](#-principais-recursos) • [Arquitetura](#-arquitetura-do-sistema) • [Hub Multi-Provider](#-hub-multi-provider-de-llms) • [Modo Tycoon](#-simulação-e-modo-tycoon-de-escritório) • [Como Começar](#-como-começar) • [Roadmap](#-roadmap)
+[Recursos](#-principais-recursos) • [Arquitetura](#-arquitetura-do-sistema) • [Hub Multi-Provider](#-hub-multi-provider-de-llms) • [Servidor MCP](#-servidor-mcp-model-context-protocol) • [Modo Tycoon](#-simulação-e-modo-tycoon-de-escritório) • [Como Começar](#-como-começar) • [Roadmap](#-roadmap)
 
 ---
 
@@ -72,6 +72,32 @@ O Type77 Pixel Office possui uma camada adaptadora desacoplada com **configuraç
 | `claude` | Integração direta com Anthropic Claude (Sonnet / Opus) | Chave de API Anthropic |
 | `antigravity` | Motor avançado de codificação agêntica do Google DeepMind | Token de Autenticação / URL |
 | `custom` | Qualquer endpoint compatível com as APIs da OpenAI ou Anthropic | URL + Headers Personalizados |
+
+---
+
+## 🔌 Servidor MCP (Model Context Protocol)
+
+O Hub Multi-Provider também é exposto como um **servidor MCP real** (via [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk)), para que outras IAs/agentes (Claude Desktop, Claude Code, etc.) possam ler e gerenciar as configurações de provedores do Type77 sem acessar a interface web.
+
+- **Implementação:** `src/lib/mcp/server.ts` (`Type77MCPServer`) contém a lógica dos tools; `src/lib/mcp/stdio-server.ts` é o processo executável que conecta essa lógica a um `StdioServerTransport` real do MCP.
+- **Ferramentas expostas:** `list_providers`, `get_provider_settings`, `update_provider`, e um `test_<provider>_connection` para cada um dos 8 provedores suportados — sempre gerados a partir do `SUPPORTED_PROVIDERS` do registry, então a lista de tools nunca fica desatualizada em relação ao Hub.
+- **Executar localmente:**
+  ```bash
+  npm run mcp
+  ```
+- **Conectar em outro cliente MCP:** o repositório já inclui um `.mcp.json` na raiz:
+  ```json
+  {
+    "mcpServers": {
+      "type77-provider-hub": {
+        "command": "npx",
+        "args": ["tsx", "src/lib/mcp/stdio-server.ts"]
+      }
+    }
+  }
+  ```
+  Clientes como o Claude Code detectam esse arquivo automaticamente na raiz do projeto. Para o Claude Desktop, copie o mesmo bloco (com `cwd` apontando para este repositório) para `claude_desktop_config.json`.
+- **Testes:** `tests/providers/mcp-server.test.ts` cobre a lógica dos tools; `tests/mcp/stdio-server.test.ts` sobe o processo real e valida o handshake MCP (`initialize` → `tools/list`) ponta a ponta.
 
 ---
 
@@ -204,13 +230,15 @@ O banco de dados SQLite local gerenciado pelo Prisma inclui:
 
 - [x] Especificação Técnica Completa e Arquitetura Multiagente
 - [x] Repositório GitHub e Documentação em Português do Brasil
-- [ ] Integração do Next.js 15 com Motor Phaser 3
-- [ ] Central de Autenticação e Configuração de Provedores de IA no Navegador
-- [ ] Motor de Pathfinding A* e Detecção de Colisão em Tempo Real
-- [ ] Modo Tycoon / Construtor de Escritório com Catálogo de Mobília
-- [ ] Runtime Multiagente ReAct com Delegação Hierárquica e Subtarefas
-- [ ] Sala de Reuniões Interativa com Protocolo de Consenso
-- [ ] Efeitos Sonoros Retrô (Áudio 8-bit para digitação, café e alertas)
+- [x] Integração do Next.js 15 com Motor Phaser 3
+- [x] Central de Autenticação e Configuração de Provedores de IA (persistência via Prisma; UI ainda pendente)
+- [x] Servidor MCP real para o Hub Multi-Provider (stdio, `.mcp.json`)
+- [x] Motor de Pathfinding A* e Detecção de Colisão em Tempo Real
+- [x] Modo Tycoon / Construtor de Escritório com Catálogo de Mobília
+- [x] Runtime Multiagente ReAct com Delegação Hierárquica e Subtarefas
+- [x] Sala de Reuniões Interativa com Protocolo de Consenso
+- [ ] HUD React, Kanban e Modais de Contratação/Configuração (Task 8)
+- [ ] Integração Fim-a-Fim, Efeitos Sonoros Retrô e Build de Produção (Task 9)
 
 ---
 
