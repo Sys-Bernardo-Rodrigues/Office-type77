@@ -176,4 +176,18 @@ export class AStarGrid {
 
     return path;
   }
+
+  getGrid(): boolean[][] {
+    return this.nodes.map(row => row.map(node => node.walkable));
+  }
+
+  updateWalkability(gridState: boolean[][]): void {
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (gridState[y] && gridState[y][x] !== undefined) {
+          this.nodes[y][x].walkable = gridState[y][x];
+        }
+      }
+    }
+  }
 }
