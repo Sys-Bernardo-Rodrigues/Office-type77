@@ -22,7 +22,9 @@ vi.mock('phaser', () => {
     events = { once: vi.fn() };
     add = {};
 
-    constructor(_key: string) {}
+    constructor(key: string) {
+      void key;
+    }
   }
 
   return {

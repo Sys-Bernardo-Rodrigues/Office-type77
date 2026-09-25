@@ -11,11 +11,11 @@ const bubbleDestroy = vi.fn();
 
 vi.mock('phaser', () => {
   class Container {
-    scene: any;
+    scene: unknown;
     x: number;
     y: number;
 
-    constructor(scene: any, x: number, y: number) {
+    constructor(scene: unknown, x: number, y: number) {
       this.scene = scene;
       this.x = x;
       this.y = y;
